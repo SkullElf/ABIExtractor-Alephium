@@ -73,6 +73,34 @@ def repair_json(s):
     return json.loads(s)
 
 
+def find_literal_jsons(js_code):
+    # Pattern to find JSON.parse calls with a basic JSON structure
+    # This pattern assumes the JSON string is well-formed and doesn't contain nested objects
+    # Adjust the pattern if your JSON strings can contain nested quotes or other complexities
+    pattern = r'JSON.parse\(\'({.*?})\'\)'
+
+    # Find all JSON strings within JSON.parse calls
+    json_strings = re.findall(pattern, js_code)
+
+    # Filter and extract JSONs that have the specified fields in the required order
+    matching_jsons = []
+    for json_str in json_strings:
+        try:
+            # Convert JSON string into a Python dictionary
+            parsed_json = json.loads(json_str)
+
+            # Check for the presence and order of 'version', 'name', 'bytecode'
+            keys = list(parsed_json.keys())
+            if ('version' in keys and 'name' in keys and 'bytecode' in keys and
+                    keys.index('version') < keys.index('name') < keys.index('bytecode')):
+                matching_jsons.append(parsed_json)
+
+        except json.JSONDecodeError:
+            # Handle cases where the JSON string is not well-formed
+            print("Found a malformed JSON string.")
+    return matching_jsons
+
+
 def find_if_abi(js_code):
     main_abi_regex = re.compile(r'\{version:\s*(\w+),\s*name:\s*(\w+),\s*bytecode:\s*(\w+),\s*codeHash:\s*(\w+),\s*fieldsSig:\s*(\w+),\s*eventsSig:\s*(\w+),\s*functions:\s*(\w+),\s*constants:\s*(\w+),\s*enums:\s*(\w+)\s*')
     match = main_abi_regex.search(js_code)
@@ -122,7 +150,7 @@ def get_js_urls(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
     js_urls = [urljoin(url, script['src']) for script in soup.find_all('script') if
-               'src' in script.attrs and 'index' in script['src'] and script['src'].endswith('.js')]
+               'src' in script.attrs and ('index' in script['src'] or 'main' in script['src']) and script['src'].endswith('.js')]
     return js_urls
 
 
@@ -131,7 +159,11 @@ def find_abis(js_code, url):
     domain = parsed_url.netloc
     subdomain_directory = create_export_directories(domain)
     consts = js_code.split("const ")
-    files = []
+    files = find_literal_jsons(js_code)
+    for file in files:
+        name_field = file["name"]
+        abi_json_path = export_abi_json(file, name_field, subdomain_directory)
+        print(f"Saved file to: {abi_json_path}")
     for const in consts:
         groups = find_if_abi(const)
         if groups is not None:
@@ -153,6 +185,7 @@ def find_abis(js_code, url):
             abi_json_path = export_abi_json(abi_components, name_field, subdomain_directory)
             print(f"Saved file to: {abi_json_path}")
             files.append(abi_components)
+
     return files
 
 
