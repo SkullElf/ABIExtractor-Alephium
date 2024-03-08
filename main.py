@@ -150,7 +150,7 @@ def get_js_urls(url):
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
     js_urls = [urljoin(url, script['src']) for script in soup.find_all('script') if
-               'src' in script.attrs and ('index' in script['src'] or 'main' in script['src']) and script['src'].endswith('.js')]
+               'src' in script.attrs and script['src'].endswith('.js')]
     return js_urls
 
 
