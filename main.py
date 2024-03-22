@@ -100,9 +100,44 @@ def find_literal_jsons(js_code):
             print("Found a malformed JSON string.")
     return matching_jsons
 
+    
+def find_literal_json_deployments(js_code):
+    # Pattern to find JSON.parse calls with a basic JSON structure
+    # This pattern assumes the JSON string is well-formed and doesn't contain nested objects
+    # Adjust the pattern if your JSON strings can contain nested quotes or other complexities
+    pattern = r'JSON.parse\(\'({.*?})\'\)'
+
+    # Find all JSON strings within JSON.parse calls
+    json_strings = re.findall(pattern, js_code)
+
+    # Filter and extract JSONs that have the specified fields in the required order
+    matching_jsons = []
+    for json_str in json_strings:
+        try:
+            # Convert JSON string into a Python dictionary
+            parsed_json = json.loads(json_str)
+
+            # Check for the presence and order of 'version', 'name', 'bytecode'
+            keys = list(parsed_json.keys())
+            if ('deployerAddress' in keys and 'contracts' in keys and 'scripts' in keys and 'migrations' in keys):
+                matching_jsons.append(parsed_json)
+
+        except json.JSONDecodeError:
+            # Handle cases where the JSON string is not well-formed
+            print("Found a malformed JSON string.")
+    return matching_jsons
+
 
 def find_if_abi(js_code):
     main_abi_regex = re.compile(r'\{version:\s*(\w+),\s*name:\s*(\w+),\s*bytecode:\s*(\w+),\s*codeHash:\s*(\w+),\s*fieldsSig:\s*(\w+),\s*eventsSig:\s*(\w+),\s*functions:\s*(\w+),\s*constants:\s*(\w+),\s*enums:\s*(\w+)\s*')
+    match = main_abi_regex.search(js_code)
+    if not match:
+        return None
+    version_var, name_var, bytecode_var, codeHash_var, fieldsSig_var, eventsSig_var, functions_var, constants_var, enums_var = match.groups()
+    return version_var, name_var, bytecode_var, codeHash_var, fieldsSig_var, eventsSig_var, functions_var, constants_var, enums_var
+
+def find_if_deployments(js_code):
+    main_abi_regex = re.compile(r'\{deployerAddress:\s*(\w+),\s*contracts:\s*(\w+),\s*scripts:\s*(\w+),\s*migrations:\s*(\w+)\s*')
     match = main_abi_regex.search(js_code)
     if not match:
         return None
@@ -160,9 +195,16 @@ def find_abis(js_code, url):
     subdomain_directory = create_export_directories(domain)
     consts = js_code.split("const ")
     files = find_literal_jsons(js_code)
+    deploys = find_literal_json_deployments(js_code)
+    deployCount = 0
     for file in files:
         name_field = file["name"]
         abi_json_path = export_abi_json(file, name_field, subdomain_directory)
+        print(f"Saved file to: {abi_json_path}")
+        
+    for file in deploys:
+        abi_json_path = export_abi_json(file, f"deployment.{deployCount}", subdomain_directory)
+        deployCount += 1
         print(f"Saved file to: {abi_json_path}")
     for const in consts:
         groups = find_if_abi(const)
